@@ -3,6 +3,7 @@ import pickle
 import pandas as pd
 import requests
 import os
+import gdown
 from urllib.parse import quote
 
 app = Flask(__name__)
@@ -12,18 +13,20 @@ API_KEY = os.environ.get("TMDB_API_KEY")
 if API_KEY:
     print("✅ TMDB API key loaded")
 else:
-    print("❌ TMDB API key NOT found")
-MODEL_URL = "https://drive.google.com/uc?export=download&id=17n9kKc-_FHtPrO_Ssv-DB6c89dfwYIlC"
+    print("⚠️ TMDB API key NOT found — posters disabled")
+
+
+MODEL_URL = "https://drive.google.com/uc?id=17n9kKc-_FHtPrO_Ssv-DB6c89dfwYIlC"
 MODEL_PATH = "model/model.pkl"
+
 
 def download_model():
     if not os.path.exists(MODEL_PATH):
-        print("Downloading model from Google Drive...")
+        print("⬇ Downloading model from Google Drive...")
         os.makedirs("model", exist_ok=True)
-        r = requests.get(MODEL_URL)
-        with open(MODEL_PATH, "wb") as f:
-            f.write(r.content)
-        print("Model downloaded.")
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+        print("✅ Model downloaded.")
+
 
 download_model()
 
@@ -31,10 +34,13 @@ data = pickle.load(open(MODEL_PATH, 'rb'))
 movies = data['movies']
 similarity = data['similarity']
 
-
 poster_cache = {}
 
+
 def fetch_poster(movie_title):
+    if not API_KEY:
+        return None
+
     if movie_title in poster_cache:
         return poster_cache[movie_title]
 
@@ -88,7 +94,6 @@ def recommend(movie):
         recommended_posters.append(fetch_poster(title))
 
     return recommended_movies, recommended_posters
-
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
