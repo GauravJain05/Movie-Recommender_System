@@ -3,45 +3,67 @@ import pickle
 import pandas as pd
 import requests
 import os
-
-API_KEY = os.environ.get("TMDB_API_KEY")
-
+from urllib.parse import quote
 
 app = Flask(__name__)
 
+API_KEY = os.environ.get("TMDB_API_KEY")
 
-# 📦 Load saved model
-data = pickle.load(open('model/model.pkl', 'rb'))
-movies = data['movies']          # DataFrame
-similarity = data['similarity']  # Similarity matrix
+if API_KEY:
+    print("✅ TMDB API key loaded")
+else:
+    print("❌ TMDB API key NOT found")
+MODEL_URL = "https://drive.google.com/uc?export=download&id=17n9kKc-_FHtPrO_Ssv-DB6c89dfwYIlC"
+MODEL_PATH = "model/model.pkl"
+
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        print("Downloading model from Google Drive...")
+        os.makedirs("model", exist_ok=True)
+        r = requests.get(MODEL_URL)
+        with open(MODEL_PATH, "wb") as f:
+            f.write(r.content)
+        print("Model downloaded.")
+
+download_model()
+
+data = pickle.load(open(MODEL_PATH, 'rb'))
+movies = data['movies']
+similarity = data['similarity']
 
 
-# 🎬 Fetch poster using MOVIE TITLE (not movie_id)
+poster_cache = {}
+
 def fetch_poster(movie_title):
-    movie_title = movie_title.replace(" ", "+")  # safe for URL
+    if movie_title in poster_cache:
+        return poster_cache[movie_title]
+
+    movie_title_encoded = quote(movie_title)
 
     search_url = (
         f"https://api.themoviedb.org/3/search/movie"
-        f"?api_key={API_KEY}&query={movie_title}"
+        f"?api_key={API_KEY}&query={movie_title_encoded}"
     )
 
     try:
         response = requests.get(search_url, timeout=5)
         data = response.json()
 
+        poster_url = None
+
         if data.get('results'):
             poster_path = data['results'][0].get('poster_path')
             if poster_path:
-                return "https://image.tmdb.org/t/p/w500" + poster_path
+                poster_url = "https://image.tmdb.org/t/p/w500" + poster_path
 
-        return None
+        poster_cache[movie_title] = poster_url
+        return poster_url
 
     except requests.exceptions.RequestException as e:
         print("TMDB error:", e)
         return None
 
 
-# 🤖 Recommendation logic
 def recommend(movie):
     movie = movie.strip()
 
@@ -68,7 +90,6 @@ def recommend(movie):
     return recommended_movies, recommended_posters
 
 
-# 🌐 Flask route
 @app.route('/', methods=['GET', 'POST'])
 def index():
     movie_names = []
@@ -85,7 +106,5 @@ def index():
         movie_posters=movie_posters
     )
 
-
-# ▶ Run app
 if __name__ == '__main__':
     app.run(debug=True)
